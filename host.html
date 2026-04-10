@@ -6,7 +6,6 @@
 <title>HBA Quiz — Host</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-<script src="config.js"></script>
 <script src="questions.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -121,16 +120,39 @@
 <div id="setup-screen">
   <h1>🦅 HBA Quiz</h1>
   <p>Season 3 · Feb 2026 Closing Ceremony</p>
-  <div class="setup-card">
-    <h2>Firebase Configuration</h2>
-    <p style="color:#aaa;font-size:.9em;margin-bottom:16px;">Open <strong>config.js</strong> and paste your Firebase config there before starting.</p>
-    <div style="background:#0d1b0f;border-radius:8px;padding:14px;margin-bottom:20px;font-size:.85em;color:#81c784;font-family:monospace;line-height:1.6;">
-      1. Go to console.firebase.google.com<br>
-      2. Create project → Realtime Database<br>
-      3. Copy config → paste into config.js<br>
-      4. Set DB rules to public (for event day)
+  <div class="setup-card" style="max-width:620px">
+    <h2>🔥 Firebase Setup</h2>
+    <p style="color:#aaa;font-size:.88em;margin-bottom:18px;line-height:1.6;">
+      Paste your Firebase config below. Get it from
+      <strong style="color:#81c784">console.firebase.google.com</strong> →
+      your project → Project Settings → scroll down to "Your apps" → copy the config object values.
+      <br><span style="color:#ffeb3b">⚡ Saved automatically — you only need to do this once.</span>
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+      <div>
+        <label style="color:#81c784;font-size:.78em;font-weight:700;display:block;margin-bottom:4px">API KEY</label>
+        <input id="cfg-apiKey" placeholder="AIzaSy..." style="width:100%;padding:10px 12px;background:#0d1b0f;border:1px solid #2e5c31;border-radius:8px;color:#fff;font-size:.88em">
+      </div>
+      <div>
+        <label style="color:#81c784;font-size:.78em;font-weight:700;display:block;margin-bottom:4px">PROJECT ID</label>
+        <input id="cfg-projectId" placeholder="my-hba-quiz" style="width:100%;padding:10px 12px;background:#0d1b0f;border:1px solid #2e5c31;border-radius:8px;color:#fff;font-size:.88em">
+      </div>
+      <div style="grid-column:1/-1">
+        <label style="color:#81c784;font-size:.78em;font-weight:700;display:block;margin-bottom:4px">DATABASE URL <span style="color:#ffeb3b">(most important!)</span></label>
+        <input id="cfg-databaseURL" placeholder="https://your-project-default-rtdb.asia-southeast1.firebasedatabase.app" style="width:100%;padding:10px 12px;background:#0d1b0f;border:1px solid #2e5c31;border-radius:8px;color:#fff;font-size:.88em">
+      </div>
+      <div>
+        <label style="color:#81c784;font-size:.78em;font-weight:700;display:block;margin-bottom:4px">AUTH DOMAIN</label>
+        <input id="cfg-authDomain" placeholder="my-project.firebaseapp.com" style="width:100%;padding:10px 12px;background:#0d1b0f;border:1px solid #2e5c31;border-radius:8px;color:#fff;font-size:.88em">
+      </div>
+      <div>
+        <label style="color:#81c784;font-size:.78em;font-weight:700;display:block;margin-bottom:4px">APP ID</label>
+        <input id="cfg-appId" placeholder="1:123456:web:abcdef" style="width:100%;padding:10px 12px;background:#0d1b0f;border:1px solid #2e5c31;border-radius:8px;color:#fff;font-size:.88em">
+      </div>
     </div>
+    <div id="setup-error" style="color:#ef5350;font-size:.88em;margin-bottom:12px;min-height:20px"></div>
     <button class="btn btn-green" onclick="initHost()">🚀 Start as Host</button>
+    <p style="color:#555;font-size:.78em;margin-top:12px;text-align:center">Config is saved in your browser — no need to re-enter next time</p>
   </div>
 </div>
 
@@ -218,6 +240,15 @@ let participants = {}, scores = {}, answersRef = null;
 let quizStarted = false;
 const QUIZ_QUESTIONS = window.QUIZ_QUESTIONS;
 
+// Pre-fill saved config on load
+window.addEventListener('load', () => {
+  const saved = JSON.parse(localStorage.getItem('hba_firebase_config') || '{}');
+  ['apiKey','projectId','databaseURL','authDomain','appId'].forEach(f => {
+    const el = document.getElementById('cfg-' + f);
+    if (el && saved[f]) el.value = saved[f];
+  });
+});
+
 function showScreen(id) {
   ['setup-screen','lobby-screen','question-screen','wordcloud-screen','leaderboard-screen','final-screen','results-screen'].forEach(s => {
     document.getElementById(s).style.display = 'none';
@@ -231,25 +262,56 @@ function notify(msg, color = '#4caf50') {
   setTimeout(() => n.style.display = 'none', 3000);
 }
 
+function setSetupError(msg) {
+  document.getElementById('setup-error').textContent = msg;
+}
+
 function initHost() {
+  // Load saved config from localStorage if fields are empty
+  const saved = JSON.parse(localStorage.getItem('hba_firebase_config') || '{}');
+  const fields = ['apiKey','projectId','databaseURL','authDomain','appId'];
+  fields.forEach(f => {
+    const el = document.getElementById('cfg-' + f);
+    if (el && !el.value && saved[f]) el.value = saved[f];
+  });
+
+  const cfg = {
+    apiKey:         document.getElementById('cfg-apiKey').value.trim(),
+    projectId:      document.getElementById('cfg-projectId').value.trim(),
+    databaseURL:    document.getElementById('cfg-databaseURL').value.trim(),
+    authDomain:     document.getElementById('cfg-authDomain').value.trim(),
+    appId:          document.getElementById('cfg-appId').value.trim(),
+  };
+
+  if (!cfg.apiKey)      { setSetupError('⚠ Please enter your API Key'); return; }
+  if (!cfg.databaseURL) { setSetupError('⚠ Database URL is required — check Realtime Database in Firebase console'); return; }
+  if (!cfg.projectId)   { setSetupError('⚠ Please enter your Project ID'); return; }
+  if (!cfg.databaseURL.startsWith('https://')) { setSetupError('⚠ Database URL must start with https://'); return; }
+
+  setSetupError('');
+  // Save to localStorage for next time
+  localStorage.setItem('hba_firebase_config', JSON.stringify(cfg));
+
   try {
-    if (!window.firebaseConfig || !window.firebaseConfig.databaseURL) {
-      alert('Please edit config.js and add your Firebase configuration first!');
-      return;
-    }
-    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+    if (firebase.apps.length) firebase.apps.forEach(app => app.delete());
+    firebase.initializeApp(cfg);
     db = firebase.database();
-    roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
-    setupLobby();
+    // Quick connection test
+    db.ref('.info/connected').once('value', snap => {
+      roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
+      setupLobby();
+    });
   } catch(e) {
-    alert('Firebase error: ' + e.message + '\n\nPlease check your config.js file.');
+    setSetupError('Firebase error: ' + e.message);
   }
 }
 
 function setupLobby() {
   showScreen('lobby-screen');
+  const cfg = JSON.parse(localStorage.getItem('hba_firebase_config') || '{}');
+  const cfgEncoded = btoa(JSON.stringify(cfg));
   const baseUrl = window.location.href.replace('host.html','player.html');
-  const joinUrl = baseUrl + '?room=' + roomCode;
+  const joinUrl = baseUrl + '?room=' + roomCode + '&cfg=' + encodeURIComponent(cfgEncoded);
   document.getElementById('join-url-display').textContent = window.location.host + '/player.html?room=' + roomCode;
   document.getElementById('room-code-display').textContent = roomCode;
 
@@ -257,6 +319,7 @@ function setupLobby() {
   const qrImg = document.createElement('img');
   qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(joinUrl)}&color=4caf50&bgcolor=1a2e1c`;
   qrImg.width = 200; qrImg.height = 200;
+  document.getElementById('qr-container').innerHTML = '';
   document.getElementById('qr-container').appendChild(qrImg);
 
   // Initialize room in Firebase
