@@ -22,6 +22,5 @@ const firebaseConfig = {
   projectId: "hba-quiz",
   storageBucket: "hba-quiz.firebasestorage.app",
   messagingSenderId: "1092716286481",
-  appId: "1:1092716286481:web:50d2d37504871cc7de17b0",
-  measurementId: "G-JZ4HJFSY5J"
+  appId: "1:1092716286481:web:50d2d37504871cc7de17b0"
 };
