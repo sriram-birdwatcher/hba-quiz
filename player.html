@@ -6,7 +6,6 @@
 <title>HBA Quiz — Join</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-<script src="config.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f; color:#fff; min-height:100vh; max-width:480px; margin:0 auto; }
@@ -190,11 +189,24 @@ async function joinRoom() {
   if (!name) { setError('Please enter your name'); return; }
   if (code.length < 3) { setError('Please enter the room code'); return; }
 
+  // Get Firebase config from URL param (embedded by host QR code)
+  const params = new URLSearchParams(window.location.search);
+  let cfg = null;
+  const cfgParam = params.get('cfg');
+  if (cfgParam) {
+    try { cfg = JSON.parse(atob(cfgParam)); } catch(e) {}
+  }
+  // Fallback to localStorage (same device as host)
+  if (!cfg) {
+    cfg = JSON.parse(localStorage.getItem('hba_firebase_config') || 'null');
+  }
+  if (!cfg || !cfg.databaseURL) {
+    setError('Cannot connect — please use the QR code from the host screen.');
+    return;
+  }
+
   try {
-    if (!window.firebaseConfig || !window.firebaseConfig.databaseURL) {
-      setError('App not configured. Please contact the host.'); return;
-    }
-    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
     db = firebase.database();
 
     const roomSnap = await db.ref('rooms/' + code).once('value');
@@ -210,9 +222,8 @@ async function joinRoom() {
     showScreen('waiting-screen');
     listenToRoom();
 
-    // Pre-fill room code from URL
   } catch(e) {
-    setError('Connection error. Check your internet.');
+    setError('Connection error: ' + e.message);
     console.error(e);
   }
 }
