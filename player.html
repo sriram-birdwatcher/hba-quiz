@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>HBA Quiz — Join</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f; color:#fff; min-height:100vh; max-width:480px; margin:0 auto; }
+
+  .screen { display:none; min-height:100vh; padding:24px 20px; }
+  .screen.active { display:flex; flex-direction:column; }
+
+  /* JOIN */
+  #join-screen { align-items:center; justify-content:center; text-align:center; }
+  .logo { font-size:3em; margin-bottom:10px; }
+  #join-screen h1 { font-size:1.8em; color:#4caf50; margin-bottom:6px; }
+  #join-screen p { color:#aaa; margin-bottom:30px; font-size:.95em; }
+  .input-group { width:100%; margin-bottom:16px; }
+  .input-group label { display:block; color:#81c784; font-size:.85em; font-weight:700; margin-bottom:6px; text-align:left; letter-spacing:.5px; }
+  .input-group input { width:100%; padding:14px 16px; background:#1a2e1c; border:2px solid #2e5c31; border-radius:12px; color:#fff; font-size:1.1em; outline:none; transition:border-color .2s; }
+  .input-group input:focus { border-color:#4caf50; }
+  .btn-join { width:100%; padding:16px; background:#4caf50; color:#fff; border:none; border-radius:12px; font-size:1.1em; font-weight:700; cursor:pointer; margin-top:8px; }
+  .btn-join:active { background:#388e3c; }
+  .error-msg { color:#ef5350; font-size:.9em; margin-top:10px; min-height:20px; }
+
+  /* WAITING */
+  #waiting-screen { align-items:center; justify-content:center; text-align:center; }
+  .waiting-icon { font-size:4em; margin-bottom:16px; animation:bounce .8s infinite alternate; }
+  @keyframes bounce { from{transform:translateY(0)} to{transform:translateY(-12px)} }
+  #waiting-screen h2 { font-size:1.5em; color:#4caf50; margin-bottom:8px; }
+  #waiting-screen p { color:#aaa; }
+  .player-name-display { font-size:1.2em; color:#ffeb3b; font-weight:700; margin:16px 0; }
+
+  /* QUESTION MCQ */
+  #question-screen { }
+  .q-top { background:#1a2e1c; border-radius:0 0 20px 20px; padding:16px 20px; margin:-24px -20px 20px; }
+  .q-progress { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .q-num { color:#81c784; font-size:.9em; font-weight:700; }
+  .q-timer-p { font-size:1.8em; font-weight:900; color:#ffeb3b; }
+  .q-timer-p.urgent { color:#e53935; }
+  .timer-bar-wrap { height:6px; background:#0d1b0f; border-radius:3px; overflow:hidden; }
+  .timer-bar { height:100%; background:#4caf50; border-radius:3px; transition:width 1s linear; }
+  .q-text-p { font-size:1.15em; font-weight:700; line-height:1.5; margin:16px 0 24px; color:#fff; }
+  .options-list { display:flex; flex-direction:column; gap:12px; }
+  .opt-btn { display:flex; align-items:center; gap:14px; padding:16px; border-radius:14px; border:2px solid #2e5c31; background:#1a2e1c; cursor:pointer; transition:all .15s; text-align:left; width:100%; }
+  .opt-btn:active { transform:scale(0.97); }
+  .opt-btn.selected { border-color:#4caf50; background:#1b5e20; }
+  .opt-btn.correct { border-color:#81c784; background:#1b5e20; }
+  .opt-btn.wrong { border-color:#e53935; background:#3e1010; opacity:.7; }
+  .opt-btn.disabled { pointer-events:none; }
+  .opt-lbl { width:34px; height:34px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:1em; flex-shrink:0; color:#fff; }
+  .lbl-a { background:#e53935; }
+  .lbl-b { background:#1565c0; }
+  .lbl-c { background:#f57c00; }
+  .lbl-d { background:#558b2f; }
+  .opt-text { font-size:.95em; line-height:1.4; flex:1; }
+  .answered-msg { text-align:center; margin-top:20px; color:#81c784; font-weight:700; font-size:1em; }
+
+  /* WORD CLOUD INPUT */
+  #wordcloud-screen { }
+  .wc-badge { display:inline-block; background:#6a1b9a; color:#fff; padding:4px 12px; border-radius:20px; font-size:.75em; font-weight:700; margin-bottom:12px; }
+  .wc-q-text { font-size:1.15em; font-weight:700; margin-bottom:20px; line-height:1.5; }
+  .wc-input { width:100%; padding:16px; background:#1a2e1c; border:2px solid #6a1b9a; border-radius:12px; color:#fff; font-size:1.1em; outline:none; resize:none; height:100px; }
+  .wc-input:focus { border-color:#ce93d8; }
+  .btn-submit { width:100%; padding:16px; background:#6a1b9a; color:#fff; border:none; border-radius:12px; font-size:1.05em; font-weight:700; cursor:pointer; margin-top:12px; }
+  .btn-submit:active { background:#4a148c; }
+  .btn-submit:disabled { opacity:.5; pointer-events:none; }
+  .wc-submitted { text-align:center; margin-top:20px; color:#ce93d8; font-weight:700; }
+
+  /* SCORE REVEAL */
+  #score-screen { align-items:center; justify-content:center; text-align:center; }
+  .score-icon { font-size:3.5em; margin-bottom:10px; }
+  .score-result { font-size:1.3em; font-weight:700; margin-bottom:6px; }
+  .score-points { font-size:3em; font-weight:900; color:#ffeb3b; margin:10px 0; }
+  .score-total { color:#aaa; font-size:.95em; }
+  .score-rank { font-size:1.1em; color:#81c784; margin-top:10px; }
+
+  /* FINISHED */
+  #finished-screen { align-items:center; justify-content:center; text-align:center; }
+  #finished-screen .logo { font-size:4em; }
+  #finished-screen h2 { font-size:1.8em; color:#ffeb3b; margin:10px 0; }
+  #finished-screen p { color:#aaa; }
+  .my-final-score { font-size:2.5em; font-weight:900; color:#4caf50; margin:16px 0; }
+</style>
+</head>
+<body>
+
+<!-- JOIN -->
+<div class="screen active" id="join-screen">
+  <div class="logo">🦅</div>
+  <h1>HBA Season 3 Quiz</h1>
+  <p>Enter your name and room code to join</p>
+  <div class="input-group">
+    <label>YOUR NAME</label>
+    <input type="text" id="player-name" placeholder="e.g. Sriram Reddy" maxlength="30" autocomplete="off">
+  </div>
+  <div class="input-group">
+    <label>ROOM CODE</label>
+    <input type="text" id="room-code-input" placeholder="e.g. AB12C" maxlength="5" style="text-transform:uppercase;letter-spacing:4px;font-weight:700" autocomplete="off">
+  </div>
+  <button class="btn-join" onclick="joinRoom()">Join Quiz →</button>
+  <div class="error-msg" id="error-msg"></div>
+</div>
+
+<!-- WAITING -->
+<div class="screen" id="waiting-screen">
+  <div class="waiting-icon">🦜</div>
+  <h2>You're in!</h2>
+  <div class="player-name-display" id="waiting-name"></div>
+  <p>Waiting for the host to start the quiz...</p>
+</div>
+
+<!-- MCQ QUESTION -->
+<div class="screen" id="question-screen">
+  <div class="q-top">
+    <div class="q-progress">
+      <div class="q-num" id="q-num-p">Q1 / 17</div>
+      <div class="q-timer-p" id="q-timer-p">30</div>
+    </div>
+    <div class="timer-bar-wrap">
+      <div class="timer-bar" id="timer-bar" style="width:100%"></div>
+    </div>
+  </div>
+  <div class="q-text-p" id="q-text-p"></div>
+  <div class="options-list" id="options-list-p"></div>
+  <div class="answered-msg" id="answered-msg" style="display:none">✓ Answer submitted! Waiting for others...</div>
+</div>
+
+<!-- WORD CLOUD INPUT -->
+<div class="screen" id="wordcloud-screen">
+  <div class="q-top" style="background:#2d1442">
+    <div class="q-progress">
+      <div class="q-num" id="q-num-wc">Q1 / 17</div>
+      <div class="q-timer-p" id="q-timer-wc">60</div>
+    </div>
+    <div class="timer-bar-wrap">
+      <div class="timer-bar" id="timer-bar-wc" style="width:100%;background:#ce93d8"></div>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <div class="wc-badge">WORD CLOUD</div>
+    <div class="wc-q-text" id="wc-q-text"></div>
+    <textarea class="wc-input" id="wc-input" placeholder="Type your answer here..."></textarea>
+    <button class="btn-submit" id="wc-submit-btn" onclick="submitWordCloud()">Submit Answer →</button>
+    <div class="wc-submitted" id="wc-submitted" style="display:none">✓ Submitted! Watch the word cloud grow on screen 🎨</div>
+  </div>
+</div>
+
+<!-- SCORE REVEAL -->
+<div class="screen" id="score-screen">
+  <div class="score-icon" id="score-icon">🎉</div>
+  <div class="score-result" id="score-result">Correct!</div>
+  <div class="score-points" id="score-points">+100</div>
+  <div class="score-total" id="score-total">Total: 0 pts</div>
+  <div class="score-rank" id="score-rank"></div>
+</div>
+
+<!-- FINISHED -->
+<div class="screen" id="finished-screen">
+  <div class="logo">🏆</div>
+  <h2>Quiz Complete!</h2>
+  <p>Your final score</p>
+  <div class="my-final-score" id="my-final-score">0 pts</div>
+  <p style="color:#aaa;margin-top:10px">Thanks for participating in HBA Season 3!</p>
+  <p style="color:#4caf50;margin-top:20px;font-size:1.4em">🦅 Mapping Birds. Building Awareness.</p>
+</div>
+
+<script>
+let db, roomCode, playerId, playerName;
+let currentQIndex = -1, myScore = 0, myAnswer = null;
+let timerInterval = null, timeLimit = 30, timeStarted = 0;
+let roomRef = null;
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function setError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+}
+
+async function joinRoom() {
+  const name = document.getElementById('player-name').value.trim();
+  const code = document.getElementById('room-code-input').value.trim().toUpperCase();
+  if (!name) { setError('Please enter your name'); return; }
+  if (code.length < 3) { setError('Please enter the room code'); return; }
+
+  try {
+    if (!window.firebaseConfig || !window.firebaseConfig.databaseURL) {
+      setError('App not configured. Please contact the host.'); return;
+    }
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+    db = firebase.database();
+
+    const roomSnap = await db.ref('rooms/' + code).once('value');
+    if (!roomSnap.exists()) { setError('Room not found. Check the code!'); return; }
+
+    roomCode = code;
+    playerName = name;
+    playerId = 'p_' + Date.now() + '_' + Math.random().toString(36).substr(2,5);
+
+    await db.ref('rooms/' + roomCode + '/participants/' + playerId).set({ name: playerName, joined: Date.now() });
+
+    document.getElementById('waiting-name').textContent = '👋 ' + playerName;
+    showScreen('waiting-screen');
+    listenToRoom();
+
+    // Pre-fill room code from URL
+  } catch(e) {
+    setError('Connection error. Check your internet.');
+    console.error(e);
+  }
+}
+
+function listenToRoom() {
+  roomRef = db.ref('rooms/' + roomCode);
+  roomRef.on('value', snap => {
+    const room = snap.val();
+    if (!room) return;
+
+    if (room.status === 'finished') { showFinished(room.scores); return; }
+    if (room.status !== 'active') return;
+
+    const qIndex = room.currentQuestion;
+    if (qIndex === undefined || qIndex < 0) return;
+
+    // New question
+    if (qIndex !== currentQIndex) {
+      currentQIndex = qIndex;
+      myAnswer = null;
+      timeLimit = room.timeLimit || 30;
+      timeStarted = Date.now();
+
+      if (room.questionType === 'mcq') {
+        showMCQQuestion(room, qIndex);
+      } else {
+        showWCQuestion(room, qIndex);
+      }
+    }
+
+    // Answer reveal
+    if (room.questionType === 'mcq' && room.revealed && myAnswer !== null) {
+      revealResult(room.correctAnswer);
+    }
+  });
+}
+
+function showMCQQuestion(room, qIndex) {
+  showScreen('question-screen');
+  document.getElementById('q-num-p').textContent = 'Q' + (qIndex+1) + ' / ' + room.totalQuestions;
+  document.getElementById('q-text-p').textContent = room.questionText;
+  document.getElementById('answered-msg').style.display = 'none';
+
+  const list = document.getElementById('options-list-p');
+  list.innerHTML = '';
+  const labels = ['A','B','C','D'];
+  const lblClass = ['lbl-a','lbl-b','lbl-c','lbl-d'];
+  (room.options || []).forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'opt-btn';
+    btn.id = 'opt-p-' + i;
+    btn.innerHTML = `<div class="opt-lbl ${lblClass[i]}">${labels[i]}</div><div class="opt-text">${opt}</div>`;
+    btn.onclick = () => submitMCQ(i, room.timeLimit || 30);
+    list.appendChild(btn);
+  });
+
+  startPlayerTimer(room.timeLimit || 30, 'q-timer-p', 'timer-bar');
+}
+
+function showWCQuestion(room, qIndex) {
+  showScreen('wordcloud-screen');
+  document.getElementById('q-num-wc').textContent = 'Q' + (qIndex+1) + ' / ' + room.totalQuestions;
+  document.getElementById('wc-q-text').textContent = room.questionText;
+  document.getElementById('wc-input').value = '';
+  document.getElementById('wc-input').disabled = false;
+  document.getElementById('wc-submit-btn').disabled = false;
+  document.getElementById('wc-submitted').style.display = 'none';
+  startPlayerTimer(room.timeLimit || 60, 'q-timer-wc', 'timer-bar-wc');
+}
+
+function startPlayerTimer(seconds, timerId, barId) {
+  clearInterval(timerInterval);
+  let left = seconds;
+  const timerEl = document.getElementById(timerId);
+  const barEl = document.getElementById(barId);
+  if (timerEl) timerEl.textContent = left;
+  if (barEl) barEl.style.width = '100%';
+  timerInterval = setInterval(() => {
+    left--;
+    if (timerEl) { timerEl.textContent = left; timerEl.className = left <= 5 ? 'q-timer-p urgent' : 'q-timer-p'; }
+    if (barEl) barEl.style.width = Math.round(left/seconds*100) + '%';
+    if (left <= 0) clearInterval(timerInterval);
+  }, 1000);
+}
+
+function submitMCQ(optionIndex, totalTime) {
+  if (myAnswer !== null) return;
+  myAnswer = optionIndex;
+  clearInterval(timerInterval);
+  const timeTaken = Math.round((Date.now() - timeStarted) / 1000);
+
+  // Disable all options
+  document.querySelectorAll('.opt-btn').forEach(b => b.classList.add('disabled'));
+  document.getElementById('opt-p-' + optionIndex).classList.add('selected');
+  document.getElementById('answered-msg').style.display = 'block';
+
+  db.ref('rooms/' + roomCode + '/answers/' + currentQIndex + '/' + playerId).set({
+    answer: optionIndex,
+    timeTaken: timeTaken
+  });
+}
+
+function submitWordCloud() {
+  const text = document.getElementById('wc-input').value.trim();
+  if (!text) return;
+  document.getElementById('wc-input').disabled = true;
+  document.getElementById('wc-submit-btn').disabled = true;
+  document.getElementById('wc-submitted').style.display = 'block';
+  clearInterval(timerInterval);
+
+  db.ref('rooms/' + roomCode + '/answers/' + currentQIndex + '/' + playerId).set({ text });
+}
+
+function revealResult(correctIndex) {
+  if (document.getElementById('score-screen').classList.contains('active')) return;
+  document.querySelectorAll('.opt-btn').forEach((btn, i) => {
+    btn.classList.add('disabled');
+    if (i === correctIndex) btn.classList.add('correct');
+    else if (i === myAnswer && myAnswer !== correctIndex) btn.classList.add('wrong');
+  });
+
+  setTimeout(() => {
+    const correct = myAnswer === correctIndex;
+    const bonus = correct ? Math.max(0, Math.round((timeLimit - Math.round((Date.now()-timeStarted)/1000)) * 10)) : 0;
+    const gained = correct ? 100 + bonus : 0;
+    myScore += gained;
+
+    showScreen('score-screen');
+    document.getElementById('score-icon').textContent = correct ? '🎉' : '😔';
+    document.getElementById('score-result').textContent = correct ? 'Correct!' : 'Not quite...';
+    document.getElementById('score-points').textContent = correct ? '+' + gained + ' pts' : '+0 pts';
+    document.getElementById('score-total').textContent = 'Total: ' + myScore + ' pts';
+    if (!correct) document.getElementById('score-points').style.color = '#ef5350';
+  }, 1500);
+}
+
+function showFinished(scores) {
+  clearInterval(timerInterval);
+  if (roomRef) roomRef.off();
+  const finalScore = scores?.[playerId] || myScore;
+  document.getElementById('my-final-score').textContent = finalScore + ' pts';
+  showScreen('finished-screen');
+}
+
+// Pre-fill room code from URL param
+window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.search);
+  const room = params.get('room');
+  if (room) document.getElementById('room-code-input').value = room.toUpperCase();
+});
+</script>
+</body>
+</html>

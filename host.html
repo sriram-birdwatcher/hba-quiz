@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HBA Quiz — Host</title>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script src="questions.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f; color:#fff; min-height:100vh; }
+
+  #setup-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:40px; }
+  #setup-screen h1 { font-size:2.8em; color:#4caf50; margin-bottom:10px; text-align:center; }
+  #setup-screen p { color:#aaa; margin-bottom:30px; text-align:center; }
+  .setup-card { background:#1a2e1c; border:1px solid #2e5c31; border-radius:16px; padding:32px; max-width:500px; width:100%; }
+  .setup-card h2 { color:#81c784; margin-bottom:20px; font-size:1.2em; }
+  .setup-card input { width:100%; padding:12px 16px; background:#0d1b0f; border:1px solid #2e5c31; border-radius:8px; color:#fff; font-size:1em; margin-bottom:16px; }
+  .btn { padding:14px 28px; border:none; border-radius:10px; font-size:1em; font-weight:700; cursor:pointer; transition:all .2s; }
+  .btn-green { background:#4caf50; color:#fff; width:100%; }
+  .btn-green:hover { background:#43a047; }
+  .btn-red { background:#e53935; color:#fff; }
+  .btn-red:hover { background:#c62828; }
+  .btn-blue { background:#1565c0; color:#fff; }
+  .btn-blue:hover { background:#0d47a1; }
+  .btn-amber { background:#f57c00; color:#fff; }
+  .btn-amber:hover { background:#e65100; }
+
+  #lobby-screen, #question-screen, #results-screen, #leaderboard-screen, #wordcloud-screen, #final-screen { display:none; }
+
+  /* LOBBY */
+  #lobby-screen { padding:40px; text-align:center; }
+  .lobby-header { margin-bottom:30px; }
+  .lobby-header h1 { font-size:2.5em; color:#4caf50; }
+  .lobby-header p { color:#aaa; font-size:1.1em; margin-top:8px; }
+  .join-info { background:#1a2e1c; border:2px solid #4caf50; border-radius:20px; padding:30px; display:inline-block; margin:20px auto; }
+  .join-url { font-size:1.6em; font-weight:700; color:#81c784; letter-spacing:1px; word-break:break-all; }
+  .join-code { font-size:4em; font-weight:900; color:#ffeb3b; letter-spacing:8px; margin:10px 0; }
+  #qr-container { margin:20px auto; }
+  #qr-container img { border-radius:12px; border:4px solid #4caf50; }
+  .participant-count { font-size:3em; font-weight:900; color:#4caf50; margin:20px 0; }
+  .participant-count span { font-size:0.5em; color:#aaa; display:block; }
+  #participant-list { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; max-width:900px; margin:0 auto 30px; max-height:200px; overflow-y:auto; }
+  .participant-chip { background:#1a2e1c; border:1px solid #4caf50; border-radius:20px; padding:6px 14px; font-size:0.85em; color:#81c784; }
+  .lobby-controls { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-top:20px; }
+
+  /* QUESTION */
+  #question-screen { padding:30px; }
+  .q-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; }
+  .q-meta { color:#81c784; font-size:1em; }
+  .q-timer { font-size:2.5em; font-weight:900; color:#ffeb3b; min-width:60px; text-align:center; }
+  .q-timer.urgent { color:#e53935; animation:pulse 0.5s infinite alternate; }
+  @keyframes pulse { from{opacity:1} to{opacity:0.4} }
+  .q-text { font-size:1.8em; font-weight:700; text-align:center; margin:20px 0 30px; color:#fff; line-height:1.4; }
+  .q-type-badge { display:inline-block; padding:4px 14px; border-radius:20px; font-size:0.75em; font-weight:700; margin-bottom:10px; }
+  .badge-mcq { background:#1565c0; }
+  .badge-wc { background:#6a1b9a; }
+  .options-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; max-width:900px; margin:0 auto; }
+  .option-bar { background:#1a2e1c; border:2px solid #2e5c31; border-radius:14px; padding:18px 20px; display:flex; align-items:center; gap:14px; transition:all .3s; }
+  .option-bar.revealed { border-color:#4caf50; }
+  .option-bar.revealed.correct { background:#1b5e20; border-color:#81c784; }
+  .option-label { width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:1.1em; flex-shrink:0; }
+  .lbl-a { background:#e53935; }
+  .lbl-b { background:#1565c0; }
+  .lbl-c { background:#f57c00; }
+  .lbl-d { background:#558b2f; }
+  .option-text { flex:1; font-size:1em; }
+  .option-count { font-size:1.4em; font-weight:900; color:#ffeb3b; min-width:40px; text-align:right; }
+  .progress-bar-wrap { height:8px; background:#0d1b0f; border-radius:4px; margin-top:8px; overflow:hidden; }
+  .progress-bar-fill { height:100%; background:#4caf50; border-radius:4px; transition:width .5s; }
+  .responses-live { text-align:center; margin:16px 0; color:#aaa; font-size:1em; }
+  .q-controls { display:flex; gap:12px; justify-content:center; margin-top:24px; flex-wrap:wrap; }
+
+  /* WORD CLOUD */
+  #wordcloud-screen { padding:40px; text-align:center; }
+  #wordcloud-screen h2 { font-size:1.8em; color:#ce93d8; margin-bottom:10px; }
+  #wordcloud-screen .q-text-wc { font-size:1.5em; color:#fff; margin-bottom:20px; font-weight:700; }
+  #wordcloud-canvas { max-width:900px; margin:0 auto; background:#1a2e1c; border-radius:20px; padding:30px; min-height:300px; display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:center; }
+  .wc-word { border-radius:8px; padding:6px 14px; font-weight:700; color:#fff; transition:all .5s; }
+  .wc-controls { display:flex; gap:12px; justify-content:center; margin-top:24px; }
+  .wc-responses { color:#aaa; margin-bottom:16px; }
+
+  /* LEADERBOARD */
+  #leaderboard-screen { padding:40px; text-align:center; }
+  #leaderboard-screen h2 { font-size:2em; color:#ffeb3b; margin-bottom:24px; }
+  .leaderboard-list { max-width:600px; margin:0 auto; }
+  .lb-row { display:flex; align-items:center; gap:16px; background:#1a2e1c; border-radius:12px; padding:14px 20px; margin-bottom:10px; border:1px solid #2e5c31; }
+  .lb-rank { font-size:1.6em; font-weight:900; min-width:44px; }
+  .lb-rank-1 { color:#ffd700; }
+  .lb-rank-2 { color:#c0c0c0; }
+  .lb-rank-3 { color:#cd7f32; }
+  .lb-name { flex:1; font-size:1.1em; font-weight:600; text-align:left; }
+  .lb-score { font-size:1.3em; font-weight:900; color:#4caf50; }
+  .lb-controls { display:flex; gap:12px; justify-content:center; margin-top:24px; }
+
+  /* FINAL */
+  #final-screen { padding:40px; text-align:center; }
+  #final-screen h1 { font-size:3em; color:#ffeb3b; margin-bottom:10px; }
+  #final-screen p { color:#aaa; font-size:1.2em; margin-bottom:30px; }
+  .podium { display:flex; align-items:flex-end; justify-content:center; gap:16px; margin:30px 0; }
+  .podium-place { text-align:center; }
+  .podium-block { border-radius:8px 8px 0 0; width:160px; display:flex; align-items:center; justify-content:center; font-size:2em; font-weight:900; }
+  .podium-1 { height:160px; background:#ffd700; color:#000; }
+  .podium-2 { height:120px; background:#c0c0c0; color:#000; }
+  .podium-3 { height:90px; background:#cd7f32; color:#000; }
+  .podium-name { font-size:0.9em; font-weight:700; margin-top:8px; color:#fff; }
+  .podium-score { font-size:0.8em; color:#aaa; }
+  .final-controls { display:flex; gap:12px; justify-content:center; margin-top:24px; }
+
+  .screen-title { font-size:1.3em; color:#4caf50; font-weight:700; margin-bottom:6px; }
+
+  /* NOTIFICATION */
+  #notification { position:fixed; top:20px; right:20px; background:#4caf50; color:#fff; padding:12px 20px; border-radius:10px; font-weight:700; display:none; z-index:999; }
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup-screen">
+  <h1>🦅 HBA Quiz</h1>
+  <p>Season 3 · Feb 2026 Closing Ceremony</p>
+  <div class="setup-card">
+    <h2>Firebase Configuration</h2>
+    <p style="color:#aaa;font-size:.9em;margin-bottom:16px;">Open <strong>config.js</strong> and paste your Firebase config there before starting.</p>
+    <div style="background:#0d1b0f;border-radius:8px;padding:14px;margin-bottom:20px;font-size:.85em;color:#81c784;font-family:monospace;line-height:1.6;">
+      1. Go to console.firebase.google.com<br>
+      2. Create project → Realtime Database<br>
+      3. Copy config → paste into config.js<br>
+      4. Set DB rules to public (for event day)
+    </div>
+    <button class="btn btn-green" onclick="initHost()">🚀 Start as Host</button>
+  </div>
+</div>
+
+<!-- LOBBY -->
+<div id="lobby-screen">
+  <div class="lobby-header">
+    <h1>🦅 HBA Season 3 Quiz</h1>
+    <p>Scan the QR code or visit the link to join!</p>
+  </div>
+  <div class="join-info">
+    <div style="color:#aaa;font-size:.9em;margin-bottom:4px;">JOIN AT</div>
+    <div class="join-url" id="join-url-display">—</div>
+    <div style="color:#aaa;font-size:.85em;margin:10px 0 4px;">ROOM CODE</div>
+    <div class="join-code" id="room-code-display">—</div>
+  </div>
+  <div id="qr-container"></div>
+  <div class="participant-count">
+    <span id="participant-count-num">0</span>
+    <span>participants joined</span>
+  </div>
+  <div id="participant-list"></div>
+  <div class="lobby-controls">
+    <button class="btn btn-green" onclick="startQuiz()">▶ Start Quiz</button>
+    <button class="btn btn-red" onclick="resetAll()">🗑 Reset All</button>
+  </div>
+</div>
+
+<!-- QUESTION -->
+<div id="question-screen">
+  <div class="q-header">
+    <div class="q-meta">
+      <span id="q-num-display">Q1</span> / <span id="q-total-display">17</span>
+      &nbsp;·&nbsp; <span id="q-type-display" class="q-type-badge badge-mcq">MCQ</span>
+    </div>
+    <div class="q-timer" id="q-timer">30</div>
+  </div>
+  <div class="q-text" id="q-text-display"></div>
+  <div class="responses-live">📊 <span id="response-count">0</span> responses received</div>
+  <div class="options-grid" id="options-grid"></div>
+  <div class="q-controls">
+    <button class="btn btn-amber" onclick="revealAnswer()">👁 Reveal Answer</button>
+    <button class="btn btn-blue" onclick="nextQuestion()">⏭ Next</button>
+    <button class="btn" style="background:#333" onclick="showLeaderboard()">🏆 Leaderboard</button>
+  </div>
+</div>
+
+<!-- WORD CLOUD -->
+<div id="wordcloud-screen">
+  <div class="screen-title">WORD CLOUD</div>
+  <div class="q-text-wc" id="wc-question-text"></div>
+  <div class="wc-responses" id="wc-response-count">0 responses</div>
+  <div id="wordcloud-canvas"></div>
+  <div class="wc-controls">
+    <button class="btn btn-blue" onclick="nextQuestion()">⏭ Next Question</button>
+    <button class="btn" style="background:#333" onclick="showLeaderboard()">🏆 Leaderboard</button>
+  </div>
+</div>
+
+<!-- LEADERBOARD -->
+<div id="leaderboard-screen">
+  <h2>🏆 Leaderboard</h2>
+  <div class="leaderboard-list" id="leaderboard-list"></div>
+  <div class="lb-controls">
+    <button class="btn btn-green" onclick="resumeQuiz()">▶ Continue Quiz</button>
+    <button class="btn btn-amber" onclick="showFinal()">🎉 Final Results</button>
+  </div>
+</div>
+
+<!-- FINAL -->
+<div id="final-screen">
+  <h1>🎉 Quiz Complete!</h1>
+  <p>HBA Season 3 · Feb 2026</p>
+  <div class="podium" id="podium"></div>
+  <div class="leaderboard-list" id="final-leaderboard-list" style="max-width:600px;margin:0 auto"></div>
+  <div class="final-controls">
+    <button class="btn btn-red" onclick="resetAll()">🔄 New Game</button>
+  </div>
+</div>
+
+<div id="notification"></div>
+
+<script>
+let db, roomCode, currentQIndex = 0, timerInterval = null, timeLeft = 0;
+let participants = {}, scores = {}, answersRef = null;
+let quizStarted = false;
+const QUIZ_QUESTIONS = window.QUIZ_QUESTIONS;
+
+function showScreen(id) {
+  ['setup-screen','lobby-screen','question-screen','wordcloud-screen','leaderboard-screen','final-screen','results-screen'].forEach(s => {
+    document.getElementById(s).style.display = 'none';
+  });
+  document.getElementById(id).style.display = 'block';
+}
+
+function notify(msg, color = '#4caf50') {
+  const n = document.getElementById('notification');
+  n.textContent = msg; n.style.background = color; n.style.display = 'block';
+  setTimeout(() => n.style.display = 'none', 3000);
+}
+
+function initHost() {
+  try {
+    if (!window.firebaseConfig || !window.firebaseConfig.databaseURL) {
+      alert('Please edit config.js and add your Firebase configuration first!');
+      return;
+    }
+    if (!firebase.apps.length) firebase.initializeApp(window.firebaseConfig);
+    db = firebase.database();
+    roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
+    setupLobby();
+  } catch(e) {
+    alert('Firebase error: ' + e.message + '\n\nPlease check your config.js file.');
+  }
+}
+
+function setupLobby() {
+  showScreen('lobby-screen');
+  const baseUrl = window.location.href.replace('host.html','player.html');
+  const joinUrl = baseUrl + '?room=' + roomCode;
+  document.getElementById('join-url-display').textContent = window.location.host + '/player.html?room=' + roomCode;
+  document.getElementById('room-code-display').textContent = roomCode;
+
+  // QR Code using free API
+  const qrImg = document.createElement('img');
+  qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(joinUrl)}&color=4caf50&bgcolor=1a2e1c`;
+  qrImg.width = 200; qrImg.height = 200;
+  document.getElementById('qr-container').appendChild(qrImg);
+
+  // Initialize room in Firebase
+  db.ref('rooms/' + roomCode).set({
+    status: 'lobby',
+    currentQuestion: -1,
+    totalQuestions: QUIZ_QUESTIONS.length,
+    timestamp: Date.now()
+  });
+
+  // Listen for participants
+  db.ref('rooms/' + roomCode + '/participants').on('value', snap => {
+    participants = snap.val() || {};
+    const count = Object.keys(participants).length;
+    document.getElementById('participant-count-num').textContent = count;
+    const list = document.getElementById('participant-list');
+    list.innerHTML = '';
+    Object.values(participants).forEach(p => {
+      const chip = document.createElement('div');
+      chip.className = 'participant-chip';
+      chip.textContent = p.name;
+      list.appendChild(chip);
+    });
+    // Init scores
+    Object.keys(participants).forEach(pid => { if (!scores[pid]) scores[pid] = 0; });
+  });
+}
+
+function startQuiz() {
+  if (Object.keys(participants).length === 0) {
+    notify('Wait for participants to join!', '#e53935'); return;
+  }
+  currentQIndex = 0;
+  scores = {};
+  Object.keys(participants).forEach(pid => scores[pid] = 0);
+  db.ref('rooms/' + roomCode + '/scores').set(scores);
+  db.ref('rooms/' + roomCode + '/status').set('active');
+  loadQuestion(currentQIndex);
+}
+
+function loadQuestion(index) {
+  if (index >= QUIZ_QUESTIONS.length) { showFinal(); return; }
+  const q = QUIZ_QUESTIONS[index];
+
+  // Clear previous answers
+  db.ref('rooms/' + roomCode + '/answers/' + index).remove();
+  db.ref('rooms/' + roomCode).update({
+    currentQuestion: index,
+    questionType: q.type,
+    questionText: q.question,
+    options: q.options || null,
+    timeLimit: q.timeLimit || 30,
+    revealed: false,
+    status: 'active'
+  });
+
+  if (q.type === 'mcq') {
+    showMCQ(q, index);
+  } else {
+    showWordCloud(q, index);
+  }
+}
+
+function showMCQ(q, index) {
+  showScreen('question-screen');
+  document.getElementById('q-num-display').textContent = 'Q' + (index + 1);
+  document.getElementById('q-total-display').textContent = QUIZ_QUESTIONS.length;
+  document.getElementById('q-text-display').textContent = q.question;
+  document.getElementById('q-type-display').textContent = 'MCQ';
+  document.getElementById('q-type-display').className = 'q-type-badge badge-mcq';
+  document.getElementById('response-count').textContent = '0';
+
+  const grid = document.getElementById('options-grid');
+  grid.innerHTML = '';
+  const labels = ['A','B','C','D'];
+  const colors = ['lbl-a','lbl-b','lbl-c','lbl-d'];
+  q.options.forEach((opt, i) => {
+    const bar = document.createElement('div');
+    bar.className = 'option-bar'; bar.id = 'opt-' + i;
+    bar.innerHTML = `
+      <div class="option-label ${colors[i]}">${labels[i]}</div>
+      <div class="option-text">${opt}</div>
+      <div class="option-count" id="cnt-${i}">0</div>
+      <div style="width:100%;position:absolute;bottom:0;left:0" class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="bar-${i}" style="width:0%"></div>
+      </div>`;
+    bar.style.position = 'relative';
+    grid.appendChild(bar);
+  });
+
+  startTimer(q.timeLimit || 30, index);
+  listenForAnswers(index, q, false);
+}
+
+function showWordCloud(q, index) {
+  showScreen('wordcloud-screen');
+  document.getElementById('wc-question-text').textContent = q.question;
+  document.getElementById('wc-response-count').textContent = '0 responses';
+  document.getElementById('wordcloud-canvas').innerHTML = '';
+  listenWordCloud(index);
+  startTimer(q.timeLimit || 60, index);
+}
+
+function startTimer(seconds, qIndex) {
+  clearInterval(timerInterval);
+  timeLeft = seconds;
+  const el = document.getElementById('q-timer');
+  if (!el) return;
+  el.textContent = timeLeft;
+  el.className = 'q-timer';
+  timerInterval = setInterval(() => {
+    timeLeft--;
+    if (el) { el.textContent = timeLeft; el.className = timeLeft <= 5 ? 'q-timer urgent' : 'q-timer'; }
+    if (timeLeft <= 0) { clearInterval(timerInterval); if (QUIZ_QUESTIONS[qIndex].type === 'mcq') revealAnswer(); }
+  }, 1000);
+}
+
+function listenForAnswers(index, q, revealed) {
+  if (answersRef) answersRef.off();
+  answersRef = db.ref('rooms/' + roomCode + '/answers/' + index);
+  const optionCounts = new Array(q.options.length).fill(0);
+
+  answersRef.on('value', snap => {
+    const answers = snap.val() || {};
+    const total = Object.keys(answers).length;
+    document.getElementById('response-count').textContent = total;
+    const counts = new Array(q.options.length).fill(0);
+    Object.values(answers).forEach(a => { if (a.answer !== undefined && counts[a.answer] !== undefined) counts[a.answer]++; });
+    const max = Math.max(...counts, 1);
+    counts.forEach((cnt, i) => {
+      const el = document.getElementById('cnt-' + i);
+      const bar = document.getElementById('bar-' + i);
+      if (el) el.textContent = cnt;
+      if (bar) bar.style.width = Math.round(cnt/max*100) + '%';
+    });
+  });
+}
+
+function listenWordCloud(index) {
+  if (answersRef) answersRef.off();
+  answersRef = db.ref('rooms/' + roomCode + '/answers/' + index);
+  const wordMap = {};
+
+  answersRef.on('value', snap => {
+    const answers = snap.val() || {};
+    const total = Object.keys(answers).length;
+    document.getElementById('wc-response-count').textContent = total + ' response' + (total !== 1 ? 's' : '');
+    Object.values(answers).forEach(a => {
+      if (!a.text) return;
+      const words = a.text.toLowerCase().trim().split(/\s+/).slice(0,3);
+      words.forEach(w => { w = w.replace(/[^a-z0-9]/g,''); if (w.length > 1) wordMap[w] = (wordMap[w]||0)+1; });
+    });
+    renderWordCloud(wordMap);
+  });
+}
+
+function renderWordCloud(wordMap) {
+  const canvas = document.getElementById('wordcloud-canvas');
+  canvas.innerHTML = '';
+  const sorted = Object.entries(wordMap).sort((a,b) => b[1]-a[1]).slice(0,40);
+  const max = sorted[0]?.[1] || 1;
+  const hues = [120,200,280,40,0,160];
+  sorted.forEach(([word, count], i) => {
+    const size = Math.round(16 + (count/max)*36);
+    const hue = hues[i % hues.length];
+    const span = document.createElement('span');
+    span.className = 'wc-word';
+    span.textContent = word;
+    span.style.fontSize = size + 'px';
+    span.style.background = `hsl(${hue},60%,35%)`;
+    canvas.appendChild(span);
+  });
+}
+
+function revealAnswer() {
+  clearInterval(timerInterval);
+  const q = QUIZ_QUESTIONS[currentQIndex];
+  if (q.type !== 'mcq') return;
+  db.ref('rooms/' + roomCode + '/revealed').set(true);
+  db.ref('rooms/' + roomCode + '/correctAnswer').set(q.correctIndex);
+
+  // Highlight correct answer
+  q.options.forEach((_, i) => {
+    const bar = document.getElementById('opt-' + i);
+    if (bar) {
+      bar.classList.add('revealed');
+      if (i === q.correctIndex) bar.classList.add('correct');
+    }
+  });
+
+  // Award scores
+  const answersRef2 = db.ref('rooms/' + roomCode + '/answers/' + currentQIndex);
+  answersRef2.once('value', snap => {
+    const answers = snap.val() || {};
+    const updates = {};
+    Object.entries(answers).forEach(([pid, a]) => {
+      if (a.answer === q.correctIndex) {
+        const bonus = Math.max(0, Math.round(a.timeTaken ? (30 - a.timeTaken) * 10 : 100));
+        scores[pid] = (scores[pid] || 0) + 100 + bonus;
+        updates['rooms/' + roomCode + '/scores/' + pid] = scores[pid];
+      }
+    });
+    if (Object.keys(updates).length) db.ref().update(updates);
+  });
+
+  notify('Answer revealed! ✓');
+}
+
+function nextQuestion() {
+  clearInterval(timerInterval);
+  if (answersRef) answersRef.off();
+  currentQIndex++;
+  if (currentQIndex >= QUIZ_QUESTIONS.length) { showFinal(); return; }
+  loadQuestion(currentQIndex);
+}
+
+function showLeaderboard() {
+  clearInterval(timerInterval);
+  showScreen('leaderboard-screen');
+  renderLeaderboard('leaderboard-list');
+}
+
+function resumeQuiz() {
+  loadQuestion(currentQIndex);
+}
+
+function renderLeaderboard(containerId, limit = 10) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+  const sorted = Object.entries(scores)
+    .map(([pid, score]) => ({ name: participants[pid]?.name || pid, score }))
+    .sort((a,b) => b.score - a.score)
+    .slice(0, limit);
+
+  const medals = ['🥇','🥈','🥉'];
+  sorted.forEach((entry, i) => {
+    const row = document.createElement('div');
+    row.className = 'lb-row';
+    const rankClass = i < 3 ? `lb-rank lb-rank-${i+1}` : 'lb-rank';
+    row.innerHTML = `
+      <div class="${rankClass}">${medals[i] || '#'+(i+1)}</div>
+      <div class="lb-name">${entry.name}</div>
+      <div class="lb-score">${entry.score} pts</div>`;
+    container.appendChild(row);
+  });
+  if (!sorted.length) container.innerHTML = '<p style="color:#aaa;text-align:center">No scores yet</p>';
+}
+
+function showFinal() {
+  clearInterval(timerInterval);
+  if (answersRef) answersRef.off();
+  db.ref('rooms/' + roomCode + '/status').set('finished');
+  showScreen('final-screen');
+
+  const sorted = Object.entries(scores)
+    .map(([pid, score]) => ({ name: participants[pid]?.name || pid, score }))
+    .sort((a,b) => b.score - a.score);
+
+  // Podium
+  const podium = document.getElementById('podium');
+  podium.innerHTML = '';
+  const podiumOrder = [1,0,2]; // 2nd, 1st, 3rd
+  const podiumClass = ['podium-2','podium-1','podium-3'];
+  const podiumHeight = ['2nd','1st','3rd'];
+  podiumOrder.forEach((rank, i) => {
+    const entry = sorted[rank];
+    if (!entry) return;
+    const place = document.createElement('div');
+    place.className = 'podium-place';
+    place.innerHTML = `
+      <div class="podium-block ${podiumClass[i]}">${podiumHeight[i]}</div>
+      <div class="podium-name">${entry.name}</div>
+      <div class="podium-score">${entry.score} pts</div>`;
+    podium.appendChild(place);
+  });
+
+  renderLeaderboard('final-leaderboard-list', 20);
+}
+
+function resetAll() {
+  if (!confirm('Reset everything and start a new game?')) return;
+  clearInterval(timerInterval);
+  if (answersRef) answersRef.off();
+  if (db && roomCode) db.ref('rooms/' + roomCode).remove();
+  location.reload();
+}
+</script>
+</body>
+</html>
