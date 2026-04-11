@@ -63,6 +63,14 @@ window.QUIZ_QUESTIONS = [
   },
   {
     type: 'mcq',
+    question: 'Which subcell has the maximum participants this season?',
+    options: ['ICRISAT', 'KBR Park', 'Forest Trek Park', 'Oxygen Park'],
+    correctIndex: 0,
+    points: 100,
+    timeLimit: 20
+  },
+  {
+    type: 'mcq',
     question: 'Which species was the most widely distributed bird in Hyderabad during Feb 2026?',
     options: ['Red-vented Bulbul', 'Ashy Prinia', 'Purple Sunbird', 'Spotted Dove'],
     correctIndex: 2,
@@ -71,7 +79,7 @@ window.QUIZ_QUESTIONS = [
   },
   {
     type: 'mcq',
-    question: 'How many bird species were recorded fromm all 3 seasons?',
+    question: 'How many bird species were recorded from all 3 seasons?',
     options: ['160-180', '200-210', '240-250', 'Above 250'],
     correctIndex: 2,
     points: 100,
@@ -177,7 +185,7 @@ window.QUIZ_QUESTIONS = [
     options: ['57', '70', '64', '74'],
     correctIndex: 2,
     points: 200,
-    timeLimit: 30
+    timeLimit: 20
   }
 
 ];
