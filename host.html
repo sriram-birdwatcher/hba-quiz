@@ -3,16 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>HBA Quiz — Host</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <script src="questions.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f; color:#fff; min-height:100vh; }
-  /* Force input/textarea text to always be visible regardless of OS dark mode */
-  input, textarea, select { color:#fff !important; background-color:#0d1b0f !important; -webkit-text-fill-color:#fff !important; }
-  input::placeholder, textarea::placeholder { color:#888 !important; -webkit-text-fill-color:#888 !important; }
+  html, body { background:#0d1b0f !important; color:#fff !important; }
+  body { font-family:'Segoe UI',Arial,sans-serif; min-height:100vh; }
+  input, textarea { background:#0d1b0f !important; color:#fff !important; }
+  input::placeholder, textarea::placeholder { color:#666 !important; opacity:1 !important; }
 
   #setup-screen { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:40px; }
   #setup-screen h1 { font-size:2.8em; color:#4caf50; margin-bottom:10px; text-align:center; }
@@ -166,12 +169,14 @@
     <p>Scan the QR code or visit the link to join!</p>
   </div>
   <div class="join-info">
-    <div style="color:#aaa;font-size:.9em;margin-bottom:4px;">JOIN AT</div>
-    <div class="join-url" id="join-url-display">—</div>
+    <div style="color:#aaa;font-size:.9em;margin-bottom:4px;">SCAN TO JOIN (recommended)</div>
+    <div id="qr-container"></div>
+    <div style="color:#aaa;font-size:.8em;margin:14px 0 4px;">OR OPEN THIS URL</div>
+    <div class="join-url" id="join-url-display" style="font-size:1.1em;word-break:break-all;">—</div>
     <div style="color:#aaa;font-size:.85em;margin:10px 0 4px;">ROOM CODE</div>
     <div class="join-code" id="room-code-display">—</div>
   </div>
-  <div id="qr-container"></div>
+  <div style="color:#666;font-size:.78em;margin-top:-10px;margin-bottom:16px;">URL joining only works if Firebase config was set on the same browser</div>
   <div class="participant-count">
     <span id="participant-count-num">0</span>
     <span>participants joined</span>
@@ -352,7 +357,10 @@ function setupLobby() {
   const cfgEncoded = btoa(JSON.stringify(cfg));
   const baseUrl = window.location.href.replace('host.html','player.html');
   const joinUrl = baseUrl + '?room=' + roomCode + '&cfg=' + encodeURIComponent(cfgEncoded);
-  document.getElementById('join-url-display').textContent = window.location.host + '/player.html?room=' + roomCode;
+  // Display clean URL (without cfg blob) — QR code carries the full URL
+  const displayUrl = baseUrl + '?room=' + roomCode;
+  document.getElementById('join-url-display').textContent = displayUrl;
+  document.getElementById('join-url-display').title = 'Full URL is in the QR code';
   document.getElementById('room-code-display').textContent = roomCode;
 
   // QR Code — white background + black modules for reliable scanning
@@ -548,8 +556,12 @@ function revealAnswer() {
   clearInterval(timerInterval);
   const q = QUIZ_QUESTIONS[currentQIndex];
   if (q.type !== 'mcq') return;
-  db.ref('rooms/' + roomCode + '/revealed').set(true);
-  db.ref('rooms/' + roomCode + '/correctAnswer').set(q.correctIndex);
+
+  // Single atomic update — player listener must not see revealed:true without correctAnswer
+  db.ref('rooms/' + roomCode).update({
+    revealed: true,
+    correctAnswer: q.correctIndex
+  });
 
   // Highlight correct answer
   q.options.forEach((_, i) => {
