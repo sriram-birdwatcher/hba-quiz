@@ -20,22 +20,22 @@ window.QUIZ_QUESTIONS = [
   {
     type: 'wordcloud',
     question: 'How many survey subcells did you personally cover this season? (Type a number)',
-    timeLimit: 30
+    timeLimit: 20
   },
   {
     type: 'wordcloud',
     question: 'Which bird species was your most memorable sighting from Season 3?',
-    timeLimit: 30
+    timeLimit: 20
   },
   {
     type: 'wordcloud',
     question: 'Who was your favourite birding companion this season? Name them!',
-    timeLimit: 30
+    timeLimit: 20
   },
   {
     type: 'wordcloud',
     question: 'In one word — describe your Season 3 survey experience.',
-    timeLimit: 30
+    timeLimit: 20
   },
 
   // ─────────────────────────────────────────────
