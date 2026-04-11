@@ -20,17 +20,22 @@ window.QUIZ_QUESTIONS = [
   {
     type: 'wordcloud',
     question: 'How many survey subcells did you personally cover this season? (Type a number)',
-    timeLimit: 20
+    timeLimit: 30
+  },
+  {
+    type: 'wordcloud',
+    question: 'Which bird species was your most memorable sighting from Season 3?',
+    timeLimit: 30
   },
   {
     type: 'wordcloud',
     question: 'Who was your favourite birding companion this season? Name them!',
-    timeLimit: 20
+    timeLimit: 30
   },
   {
     type: 'wordcloud',
     question: 'In one word — describe your Season 3 survey experience.',
-    timeLimit: 20
+    timeLimit: 30
   },
 
   // ─────────────────────────────────────────────
@@ -125,7 +130,7 @@ window.QUIZ_QUESTIONS = [
   {
     type: 'mcq',
     question: 'Which species saw the sharpest population DECLINE between Feb 2025 and Feb 2026?',
-    options: ['Indian Robin (–21%)', 'Lesser Whistling-Duck (–35%)', 'Black-winged Stilt (–37%)', 'Great Cormorant (–67%)'],
+    options: ['Indian Robin', 'Lesser Whistling-Duck', 'Black-winged Stilt', 'Great Cormorant'],
     correctIndex: 3,
     points: 200,
     timeLimit: 20
