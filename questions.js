@@ -71,8 +71,8 @@ window.QUIZ_QUESTIONS = [
   },
   {
     type: 'mcq',
-    question: 'How many bird species were recorded during Season 3 (Feb 2026)?',
-    options: ['166', '195', '218', '209'],
+    question: 'How many bird species were recorded fromm all 3 seasons?',
+    options: ['160-180', '200-210', '240-250', 'Above 250'],
     correctIndex: 2,
     points: 100,
     timeLimit: 20
