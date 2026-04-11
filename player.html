@@ -8,10 +8,10 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  /* Force light-mode rendering so system dark-mode cannot override text/bg colours */
-  :root { color-scheme: light only; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f !important; color:#fff !important; min-height:100vh; max-width:480px; margin:0 auto; }
-  input, textarea, button { color-scheme: light only; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f; color:#fff; min-height:100vh; max-width:480px; margin:0 auto; }
+  /* Force input/textarea text visible regardless of OS dark mode */
+  input, textarea, select { color:#fff !important; background-color:#1a2e1c !important; -webkit-text-fill-color:#fff !important; }
+  input::placeholder, textarea::placeholder { color:#888 !important; -webkit-text-fill-color:#888 !important; }
 
   .screen { display:none; min-height:100vh; padding:24px 20px; }
   .screen.active { display:flex; flex-direction:column; }
@@ -176,7 +176,8 @@ let db, roomCode, playerId, playerName;
 let currentQIndex = -1, myScore = 0, myAnswer = null;
 let timerInterval = null, timeLimit = 30, basePoints = 100, timeStarted = 0;
 let roomRef = null;
-let timerLocked = false; // BUG 3 FIX: tracks whether host timer has expired
+let timerLocked = false;
+let revealShown = false; // track whether we've already shown the score screen for current question
 
 // ─── SESSION PERSISTENCE (BUG 5 FIX) ─────────────────────────────────────
 // Save session to sessionStorage so a page refresh re-attaches instead of
@@ -184,6 +185,11 @@ let timerLocked = false; // BUG 3 FIX: tracks whether host timer has expired
 const SESSION_KEY = 'hba_player_session';
 
 function saveSession(cfg) {
+  // If cfg is null, preserve whatever was already stored
+  if (cfg === null) {
+    const existing = loadSession();
+    cfg = existing ? existing.cfg : null;
+  }
   sessionStorage.setItem(SESSION_KEY, JSON.stringify({
     roomCode, playerId, playerName, myScore, currentQIndex, cfg
   }));
@@ -303,10 +309,11 @@ function listenToRoom() {
       currentQIndex = qIndex;
       myAnswer = null;
       timerLocked = false;
+      revealShown = false;
       timeLimit = room.timeLimit || 30;
       basePoints = room.points || 100;
       timeStarted = Date.now();
-      saveSession(null); // update stored index
+      saveSession(null);
 
       if (room.questionType === 'mcq') {
         showMCQQuestion(room, qIndex);
@@ -315,8 +322,9 @@ function listenToRoom() {
       }
     }
 
-    // Answer reveal
-    if (room.questionType === 'mcq' && room.revealed && myAnswer !== null) {
+    // Answer reveal — show score screen for both correct AND wrong AND unanswered
+    if (room.questionType === 'mcq' && room.revealed && !revealShown) {
+      revealShown = true;
       revealResult(room.correctAnswer, room.points || 100);
     }
   });
@@ -422,16 +430,18 @@ function submitWordCloud() {
 }
 
 function revealResult(correctIndex, questionPoints) {
-  if (document.getElementById('score-screen').classList.contains('active')) return;
-  document.querySelectorAll('.opt-btn').forEach((btn, i) => {
-    btn.classList.add('disabled');
-    if (i === correctIndex) btn.classList.add('correct');
-    else if (i === myAnswer && myAnswer !== correctIndex) btn.classList.add('wrong');
-  });
+  // Highlight correct/wrong options (only if MCQ screen is still showing)
+  if (document.getElementById('question-screen').classList.contains('active')) {
+    document.querySelectorAll('.opt-btn').forEach((btn, i) => {
+      btn.classList.add('disabled');
+      if (i === correctIndex) btn.classList.add('correct');
+      else if (i === myAnswer && myAnswer !== correctIndex) btn.classList.add('wrong');
+    });
+  }
 
   setTimeout(() => {
     const correct = myAnswer === correctIndex;
-    // BUG 2 FIX: use per-question basePoints from Firebase
+    const answered = myAnswer !== null;
     const pts = questionPoints || basePoints || 100;
     const tLimit = timeLimit || 30;
     const bonus = correct ? Math.max(0, Math.round((tLimit - Math.round((Date.now() - timeStarted) / 1000)) * 10)) : 0;
@@ -439,14 +449,19 @@ function revealResult(correctIndex, questionPoints) {
     myScore += gained;
 
     showScreen('score-screen');
-    document.getElementById('score-icon').textContent = correct ? '🎉' : '😔';
-    document.getElementById('score-result').textContent = correct ? 'Correct!' : 'Not quite...';
+    if (!answered) {
+      document.getElementById('score-icon').textContent = '⏰';
+      document.getElementById('score-result').textContent = 'Time\'s up!';
+    } else {
+      document.getElementById('score-icon').textContent = correct ? '🎉' : '😔';
+      document.getElementById('score-result').textContent = correct ? 'Correct!' : 'Not quite...';
+    }
     document.getElementById('score-points').textContent = correct ? '+' + gained + ' pts' : '+0 pts';
     document.getElementById('score-total').textContent = 'Total: ' + myScore + ' pts';
     document.getElementById('score-points').style.color = correct ? '#ffeb3b' : '#ef5350';
 
-    saveSession(null); // BUG 5 FIX: keep score up to date in session
-  }, 1500);
+    saveSession(null);
+  }, 1200);
 }
 
 function showFinished(scores) {
