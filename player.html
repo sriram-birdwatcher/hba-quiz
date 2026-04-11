@@ -3,15 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="color-scheme" content="dark">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
 <title>HBA Quiz — Join</title>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f; color:#fff; min-height:100vh; max-width:480px; margin:0 auto; }
-  /* Force input/textarea text visible regardless of OS dark mode */
-  input, textarea, select { color:#fff !important; background-color:#1a2e1c !important; -webkit-text-fill-color:#fff !important; }
-  input::placeholder, textarea::placeholder { color:#fff !important; -webkit-text-fill-color:#fff !important; }
+  html, body { background:#0d1b0f !important; color:#fff !important; }
+  body { font-family:'Segoe UI',Arial,sans-serif; min-height:100vh; max-width:480px; margin:0 auto; }
+  /* Android Chrome dark mode override — meta color-scheme:dark tells the browser
+     our page IS already dark, so it must not recolour anything */
+  input, textarea { background:#1a2e1c !important; color:#fff !important; border-color:#2e5c31 !important; }
+  input::placeholder, textarea::placeholder { color:#666 !important; opacity:1 !important; }
 
   .screen { display:none; min-height:100vh; padding:24px 20px; }
   .screen.active { display:flex; flex-direction:column; }
@@ -173,35 +178,44 @@
 
 <script>
 let db, roomCode, playerId, playerName;
-let currentQIndex = -1, myScore = 0, myAnswer = null;
+let currentQIndex = -1, myScore = 0, myAnswer = null, myTimeTaken = 0;
 let timerInterval = null, timeLimit = 30, basePoints = 100, timeStarted = 0;
 let roomRef = null;
 let timerLocked = false;
-let revealShown = false; // track whether we've already shown the score screen for current question
+let revealShown = false;
 
-// ─── SESSION PERSISTENCE (BUG 5 FIX) ─────────────────────────────────────
-// Save session to sessionStorage so a page refresh re-attaches instead of
-// creating a new participant entry.
+// ─── SESSION PERSISTENCE ──────────────────────────────────────────────────
+// Uses localStorage (not sessionStorage) — survives tab kills on Android Chrome.
+// Key is scoped per room so old sessions from different games don't interfere.
 const SESSION_KEY = 'hba_player_session';
 
 function saveSession(cfg) {
-  // If cfg is null, preserve whatever was already stored
+  // Preserve existing cfg if null is passed
   if (cfg === null) {
     const existing = loadSession();
     cfg = existing ? existing.cfg : null;
   }
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify({
-    roomCode, playerId, playerName, myScore, currentQIndex, cfg
-  }));
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify({
+      roomCode, playerId, playerName, myScore, currentQIndex, cfg,
+      savedAt: Date.now()
+    }));
+  } catch(e) { console.warn('saveSession failed:', e); }
 }
 
 function loadSession() {
-  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); }
-  catch(e) { return null; }
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    // Discard sessions older than 4 hours
+    if (Date.now() - (s.savedAt || 0) > 4 * 60 * 60 * 1000) { clearSession(); return null; }
+    return s;
+  } catch(e) { return null; }
 }
 
 function clearSession() {
-  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY);
 }
 // ──────────────────────────────────────────────────────────────────────────
 
@@ -308,6 +322,7 @@ function listenToRoom() {
     if (qIndex !== currentQIndex) {
       currentQIndex = qIndex;
       myAnswer = null;
+      myTimeTaken = 0;
       timerLocked = false;
       revealShown = false;
       timeLimit = room.timeLimit || 30;
@@ -402,10 +417,10 @@ function startPlayerTimer(seconds, timerId, barId) {
 }
 
 function submitMCQ(optionIndex) {
-  if (myAnswer !== null || timerLocked) return; // BUG 3 FIX: block if locked
+  if (myAnswer !== null || timerLocked) return;
   myAnswer = optionIndex;
+  myTimeTaken = Math.round((Date.now() - timeStarted) / 1000); // stored now — not recalculated at reveal
   clearInterval(timerInterval);
-  const timeTaken = Math.round((Date.now() - timeStarted) / 1000);
 
   document.querySelectorAll('.opt-btn').forEach(b => b.classList.add('disabled'));
   document.getElementById('opt-p-' + optionIndex).classList.add('selected');
@@ -413,7 +428,7 @@ function submitMCQ(optionIndex) {
 
   db.ref('rooms/' + roomCode + '/answers/' + currentQIndex + '/' + playerId).set({
     answer: optionIndex,
-    timeTaken: timeTaken
+    timeTaken: myTimeTaken
   });
 }
 
@@ -444,7 +459,8 @@ function revealResult(correctIndex, questionPoints) {
     const answered = myAnswer !== null;
     const pts = questionPoints || basePoints || 100;
     const tLimit = timeLimit || 30;
-    const bonus = correct ? Math.max(0, Math.round((tLimit - Math.round((Date.now() - timeStarted) / 1000)) * 10)) : 0;
+    // Use myTimeTaken captured at submit — not Date.now() which is now seconds after reveal
+    const bonus = correct ? Math.max(0, Math.round((tLimit - myTimeTaken) * 10)) : 0;
     const gained = correct ? pts + bonus : 0;
     myScore += gained;
 
