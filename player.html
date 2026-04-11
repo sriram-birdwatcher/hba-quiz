@@ -8,7 +8,10 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f; color:#fff; min-height:100vh; max-width:480px; margin:0 auto; }
+  /* Force light-mode rendering so system dark-mode cannot override text/bg colours */
+  :root { color-scheme: light only; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#0d1b0f !important; color:#fff !important; min-height:100vh; max-width:480px; margin:0 auto; }
+  input, textarea, button { color-scheme: light only; }
 
   .screen { display:none; min-height:100vh; padding:24px 20px; }
   .screen.active { display:flex; flex-direction:column; }
@@ -171,8 +174,30 @@
 <script>
 let db, roomCode, playerId, playerName;
 let currentQIndex = -1, myScore = 0, myAnswer = null;
-let timerInterval = null, timeLimit = 30, timeStarted = 0;
+let timerInterval = null, timeLimit = 30, basePoints = 100, timeStarted = 0;
 let roomRef = null;
+let timerLocked = false; // BUG 3 FIX: tracks whether host timer has expired
+
+// ─── SESSION PERSISTENCE (BUG 5 FIX) ─────────────────────────────────────
+// Save session to sessionStorage so a page refresh re-attaches instead of
+// creating a new participant entry.
+const SESSION_KEY = 'hba_player_session';
+
+function saveSession(cfg) {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+    roomCode, playerId, playerName, myScore, currentQIndex, cfg
+  }));
+}
+
+function loadSession() {
+  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); }
+  catch(e) { return null; }
+}
+
+function clearSession() {
+  sessionStorage.removeItem(SESSION_KEY);
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -189,14 +214,12 @@ async function joinRoom() {
   if (!name) { setError('Please enter your name'); return; }
   if (code.length < 3) { setError('Please enter the room code'); return; }
 
-  // Get Firebase config from URL param (embedded by host QR code)
   const params = new URLSearchParams(window.location.search);
   let cfg = null;
   const cfgParam = params.get('cfg');
   if (cfgParam) {
     try { cfg = JSON.parse(atob(cfgParam)); } catch(e) {}
   }
-  // Fallback to localStorage (same device as host)
   if (!cfg) {
     cfg = JSON.parse(localStorage.getItem('hba_firebase_config') || 'null');
   }
@@ -218,6 +241,7 @@ async function joinRoom() {
 
     await db.ref('rooms/' + roomCode + '/participants/' + playerId).set({ name: playerName, joined: Date.now() });
 
+    saveSession(cfg); // BUG 5 FIX: persist new session
     document.getElementById('waiting-name').textContent = '👋 ' + playerName;
     showScreen('waiting-screen');
     listenToRoom();
@@ -225,6 +249,35 @@ async function joinRoom() {
   } catch(e) {
     setError('Connection error: ' + e.message);
     console.error(e);
+  }
+}
+
+async function rejoinSession(session) {
+  // BUG 5 FIX: re-attach to existing Firebase session after refresh
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(session.cfg);
+    db = firebase.database();
+
+    roomCode    = session.roomCode;
+    playerId    = session.playerId;
+    playerName  = session.playerName;
+    myScore     = session.myScore || 0;
+    currentQIndex = session.currentQIndex ?? -1;
+
+    // Check the room still exists
+    const roomSnap = await db.ref('rooms/' + roomCode).once('value');
+    if (!roomSnap.exists()) { clearSession(); return false; }
+    const room = roomSnap.val();
+    if (room.status === 'finished') { showFinished(room.scores); return true; }
+
+    document.getElementById('waiting-name').textContent = '👋 ' + playerName;
+    showScreen('waiting-screen');
+    listenToRoom();
+    return true;
+  } catch(e) {
+    console.warn('Rejoin failed:', e);
+    clearSession();
+    return false;
   }
 }
 
@@ -240,12 +293,20 @@ function listenToRoom() {
     const qIndex = room.currentQuestion;
     if (qIndex === undefined || qIndex < 0) return;
 
+    // BUG 3 FIX: if host has flagged timer expired, lock inputs immediately
+    if (room.timerExpired) {
+      lockInputs();
+    }
+
     // New question
     if (qIndex !== currentQIndex) {
       currentQIndex = qIndex;
       myAnswer = null;
+      timerLocked = false;
       timeLimit = room.timeLimit || 30;
+      basePoints = room.points || 100;
       timeStarted = Date.now();
+      saveSession(null); // update stored index
 
       if (room.questionType === 'mcq') {
         showMCQQuestion(room, qIndex);
@@ -256,16 +317,36 @@ function listenToRoom() {
 
     // Answer reveal
     if (room.questionType === 'mcq' && room.revealed && myAnswer !== null) {
-      revealResult(room.correctAnswer);
+      revealResult(room.correctAnswer, room.points || 100);
     }
   });
+}
+
+// BUG 3 FIX: lock all answer inputs
+function lockInputs() {
+  if (timerLocked) return;
+  timerLocked = true;
+  clearInterval(timerInterval);
+  document.querySelectorAll('.opt-btn').forEach(b => b.classList.add('disabled'));
+  const wcInput = document.getElementById('wc-input');
+  const wcBtn   = document.getElementById('wc-submit-btn');
+  if (wcInput) wcInput.disabled = true;
+  if (wcBtn)   wcBtn.disabled = true;
+  if (myAnswer === null) {
+    // Player didn't answer in time — show a soft message
+    const msg = document.getElementById('answered-msg');
+    if (msg) { msg.textContent = '⏰ Time\'s up!'; msg.style.display = 'block'; msg.style.color = '#e53935'; }
+  }
 }
 
 function showMCQQuestion(room, qIndex) {
   showScreen('question-screen');
   document.getElementById('q-num-p').textContent = 'Q' + (qIndex+1) + ' / ' + room.totalQuestions;
   document.getElementById('q-text-p').textContent = room.questionText;
-  document.getElementById('answered-msg').style.display = 'none';
+  const msg = document.getElementById('answered-msg');
+  msg.textContent = '✓ Answer submitted! Waiting for others...';
+  msg.style.color = '#81c784';
+  msg.style.display = 'none';
 
   const list = document.getElementById('options-list-p');
   list.innerHTML = '';
@@ -276,7 +357,7 @@ function showMCQQuestion(room, qIndex) {
     btn.className = 'opt-btn';
     btn.id = 'opt-p-' + i;
     btn.innerHTML = `<div class="opt-lbl ${lblClass[i]}">${labels[i]}</div><div class="opt-text">${opt}</div>`;
-    btn.onclick = () => submitMCQ(i, room.timeLimit || 30);
+    btn.onclick = () => submitMCQ(i);
     list.appendChild(btn);
   });
 
@@ -298,24 +379,26 @@ function startPlayerTimer(seconds, timerId, barId) {
   clearInterval(timerInterval);
   let left = seconds;
   const timerEl = document.getElementById(timerId);
-  const barEl = document.getElementById(barId);
+  const barEl   = document.getElementById(barId);
   if (timerEl) timerEl.textContent = left;
-  if (barEl) barEl.style.width = '100%';
+  if (barEl)   barEl.style.width = '100%';
   timerInterval = setInterval(() => {
     left--;
     if (timerEl) { timerEl.textContent = left; timerEl.className = left <= 5 ? 'q-timer-p urgent' : 'q-timer-p'; }
-    if (barEl) barEl.style.width = Math.round(left/seconds*100) + '%';
-    if (left <= 0) clearInterval(timerInterval);
+    if (barEl)   barEl.style.width = Math.round(left / seconds * 100) + '%';
+    if (left <= 0) {
+      clearInterval(timerInterval);
+      lockInputs(); // BUG 3 FIX: also lock locally when player-side countdown hits 0
+    }
   }, 1000);
 }
 
-function submitMCQ(optionIndex, totalTime) {
-  if (myAnswer !== null) return;
+function submitMCQ(optionIndex) {
+  if (myAnswer !== null || timerLocked) return; // BUG 3 FIX: block if locked
   myAnswer = optionIndex;
   clearInterval(timerInterval);
   const timeTaken = Math.round((Date.now() - timeStarted) / 1000);
 
-  // Disable all options
   document.querySelectorAll('.opt-btn').forEach(b => b.classList.add('disabled'));
   document.getElementById('opt-p-' + optionIndex).classList.add('selected');
   document.getElementById('answered-msg').style.display = 'block';
@@ -327,6 +410,7 @@ function submitMCQ(optionIndex, totalTime) {
 }
 
 function submitWordCloud() {
+  if (timerLocked) return; // BUG 3 FIX: block if locked
   const text = document.getElementById('wc-input').value.trim();
   if (!text) return;
   document.getElementById('wc-input').disabled = true;
@@ -337,7 +421,7 @@ function submitWordCloud() {
   db.ref('rooms/' + roomCode + '/answers/' + currentQIndex + '/' + playerId).set({ text });
 }
 
-function revealResult(correctIndex) {
+function revealResult(correctIndex, questionPoints) {
   if (document.getElementById('score-screen').classList.contains('active')) return;
   document.querySelectorAll('.opt-btn').forEach((btn, i) => {
     btn.classList.add('disabled');
@@ -347,8 +431,11 @@ function revealResult(correctIndex) {
 
   setTimeout(() => {
     const correct = myAnswer === correctIndex;
-    const bonus = correct ? Math.max(0, Math.round((timeLimit - Math.round((Date.now()-timeStarted)/1000)) * 10)) : 0;
-    const gained = correct ? 100 + bonus : 0;
+    // BUG 2 FIX: use per-question basePoints from Firebase
+    const pts = questionPoints || basePoints || 100;
+    const tLimit = timeLimit || 30;
+    const bonus = correct ? Math.max(0, Math.round((tLimit - Math.round((Date.now() - timeStarted) / 1000)) * 10)) : 0;
+    const gained = correct ? pts + bonus : 0;
     myScore += gained;
 
     showScreen('score-screen');
@@ -356,20 +443,31 @@ function revealResult(correctIndex) {
     document.getElementById('score-result').textContent = correct ? 'Correct!' : 'Not quite...';
     document.getElementById('score-points').textContent = correct ? '+' + gained + ' pts' : '+0 pts';
     document.getElementById('score-total').textContent = 'Total: ' + myScore + ' pts';
-    if (!correct) document.getElementById('score-points').style.color = '#ef5350';
+    document.getElementById('score-points').style.color = correct ? '#ffeb3b' : '#ef5350';
+
+    saveSession(null); // BUG 5 FIX: keep score up to date in session
   }, 1500);
 }
 
 function showFinished(scores) {
   clearInterval(timerInterval);
   if (roomRef) roomRef.off();
+  clearSession(); // BUG 5 FIX: quiz is over — clear session so refresh goes to join
   const finalScore = scores?.[playerId] || myScore;
   document.getElementById('my-final-score').textContent = finalScore + ' pts';
   showScreen('finished-screen');
 }
 
-// Pre-fill room code from URL param
-window.addEventListener('load', () => {
+// ─── ON LOAD: restore session or pre-fill URL params ──────────────────────
+window.addEventListener('load', async () => {
+  // BUG 5 FIX: attempt to restore an existing session first
+  const session = loadSession();
+  if (session && session.roomCode && session.playerId) {
+    const restored = await rejoinSession(session);
+    if (restored) return; // successfully re-attached, skip join screen
+  }
+
+  // No session — just pre-fill room code from URL param as before
   const params = new URLSearchParams(window.location.search);
   const room = params.get('room');
   if (room) document.getElementById('room-code-input').value = room.toUpperCase();
