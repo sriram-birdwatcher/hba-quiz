@@ -238,15 +238,26 @@
 let db, roomCode, currentQIndex = 0, timerInterval = null, timeLeft = 0;
 let participants = {}, scores = {}, answersRef = null;
 let quizStarted = false;
-const QUIZ_QUESTIONS = window.QUIZ_QUESTIONS;
+
+// Guard: questions.js must be loaded
+if (!window.QUIZ_QUESTIONS || !window.QUIZ_QUESTIONS.length) {
+  document.addEventListener('DOMContentLoaded', () => {
+    const err = document.getElementById('setup-error');
+    if (err) err.textContent = '⚠ questions.js failed to load. Make sure it is uploaded to GitHub alongside host.html.';
+    console.error('QUIZ_QUESTIONS not found — questions.js missing or has a syntax error');
+  });
+}
+const QUIZ_QUESTIONS = window.QUIZ_QUESTIONS || [];
 
 // Pre-fill saved config on load
 window.addEventListener('load', () => {
-  const saved = JSON.parse(localStorage.getItem('hba_firebase_config') || '{}');
-  ['apiKey','projectId','databaseURL','authDomain','appId'].forEach(f => {
-    const el = document.getElementById('cfg-' + f);
-    if (el && saved[f]) el.value = saved[f];
-  });
+  try {
+    const saved = JSON.parse(localStorage.getItem('hba_firebase_config') || '{}');
+    ['apiKey','projectId','databaseURL','authDomain','appId'].forEach(f => {
+      const el = document.getElementById('cfg-' + f);
+      if (el && saved[f]) el.value = saved[f];
+    });
+  } catch(e) { console.warn('Could not restore saved config:', e); }
 });
 
 function showScreen(id) {
@@ -269,7 +280,7 @@ function setSetupError(msg) {
   document.getElementById('setup-error').textContent = msg;
 }
 
-function initHost() {
+async function initHost() {
   // Load saved config from localStorage if fields are empty
   const saved = JSON.parse(localStorage.getItem('hba_firebase_config') || '{}');
   const fields = ['apiKey','projectId','databaseURL','authDomain','appId'];
@@ -291,24 +302,23 @@ function initHost() {
   if (!cfg.projectId)   { setSetupError('⚠ Please enter your Project ID'); return; }
   if (!cfg.databaseURL.startsWith('https://')) { setSetupError('⚠ Database URL must start with https://'); return; }
 
-  setSetupError('');
-  // Save to localStorage for next time
+  setSetupError('⏳ Connecting to Firebase...');
   localStorage.setItem('hba_firebase_config', JSON.stringify(cfg));
 
   try {
     // Clean up any old Firebase app instance
     if (firebase.apps && firebase.apps.length) {
-      await Promise.all(firebase.apps.map(app => app.delete()));
+      for (const app of firebase.apps) { try { await app.delete(); } catch(e) {} }
     }
     firebase.initializeApp(cfg);
     db = firebase.database();
-    setSetupError('⏳ Connecting to Firebase...');
+
     let connected = false;
 
     // Timeout after 8s with a clear message
     const timeout = setTimeout(() => {
       if (!connected) {
-        setSetupError('⚠ Timed out. Check: (1) Database URL is exactly right, (2) You created a Realtime Database in Firebase Console, (3) Rules are in test mode (read/write = true).');
+        setSetupError('⚠ Timed out. Check: (1) Database URL is correct, (2) You created a Realtime Database in Firebase Console, (3) Rules are set to test mode (read/write = true).');
       }
     }, 8000);
 
@@ -325,7 +335,7 @@ function initHost() {
       })
       .catch(err => {
         clearTimeout(timeout);
-        setSetupError('⚠ Database write failed: ' + err.message + ' → In Firebase Console → Realtime Database → Rules → set both read & write to true → Publish.');
+        setSetupError('⚠ Database write failed: ' + err.message + ' → Firebase Console → Realtime Database → Rules → set read & write to true → Publish.');
       });
 
   } catch(e) {
