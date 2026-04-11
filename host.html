@@ -250,10 +250,13 @@ window.addEventListener('load', () => {
 });
 
 function showScreen(id) {
-  ['setup-screen','lobby-screen','question-screen','wordcloud-screen','leaderboard-screen','final-screen','results-screen'].forEach(s => {
-    document.getElementById(s).style.display = 'none';
+  ['setup-screen','lobby-screen','question-screen','wordcloud-screen','leaderboard-screen','final-screen'].forEach(s => {
+    const el = document.getElementById(s);
+    if (el) el.style.display = 'none';
   });
-  document.getElementById(id).style.display = 'block';
+  const target = document.getElementById(id);
+  if (target) { target.style.display = 'block'; }
+  else { console.error('showScreen: element not found:', id); }
 }
 
 function notify(msg, color = '#4caf50') {
@@ -293,16 +296,40 @@ function initHost() {
   localStorage.setItem('hba_firebase_config', JSON.stringify(cfg));
 
   try {
-    if (firebase.apps.length) firebase.apps.forEach(app => app.delete());
+    // Clean up any old Firebase app instance
+    if (firebase.apps && firebase.apps.length) {
+      await Promise.all(firebase.apps.map(app => app.delete()));
+    }
     firebase.initializeApp(cfg);
     db = firebase.database();
-    // Quick connection test
-    db.ref('.info/connected').once('value', snap => {
-      roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
-      setupLobby();
-    });
+    setSetupError('⏳ Connecting to Firebase...');
+    let connected = false;
+
+    // Timeout after 8s with a clear message
+    const timeout = setTimeout(() => {
+      if (!connected) {
+        setSetupError('⚠ Timed out. Check: (1) Database URL is exactly right, (2) You created a Realtime Database in Firebase Console, (3) Rules are in test mode (read/write = true).');
+      }
+    }, 8000);
+
+    // Test write — catches wrong rules immediately
+    db.ref('_ping').set(Date.now())
+      .then(() => {
+        if (!connected) {
+          connected = true;
+          clearTimeout(timeout);
+          setSetupError('');
+          roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
+          setupLobby();
+        }
+      })
+      .catch(err => {
+        clearTimeout(timeout);
+        setSetupError('⚠ Database write failed: ' + err.message + ' → In Firebase Console → Realtime Database → Rules → set both read & write to true → Publish.');
+      });
+
   } catch(e) {
-    setSetupError('Firebase error: ' + e.message);
+    setSetupError('⚠ Firebase init error: ' + e.message);
   }
 }
 
@@ -334,7 +361,8 @@ function setupLobby() {
   db.ref('rooms/' + roomCode + '/participants').on('value', snap => {
     participants = snap.val() || {};
     const count = Object.keys(participants).length;
-    document.getElementById('participant-count-num').textContent = count;
+    const pcEl = document.getElementById('participant-count-num');
+    if (pcEl) pcEl.textContent = count;
     const list = document.getElementById('participant-list');
     list.innerHTML = '';
     Object.values(participants).forEach(p => {
