@@ -24,11 +24,6 @@ window.QUIZ_QUESTIONS = [
   },
   {
     type: 'wordcloud',
-    question: 'Which bird species was your most memorable sighting from Season 3?',
-    timeLimit: 20
-  },
-  {
-    type: 'wordcloud',
     question: 'Who was your favourite birding companion this season? Name them!',
     timeLimit: 20
   },
