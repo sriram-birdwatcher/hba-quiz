@@ -14,14 +14,3 @@
 //  7. Choose any region → Start in TEST MODE (for event day)
 // ============================================================
 
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyDNqhmR9gE7yv8ZsWI1GV2_rAKDb3GSbAM",
-  authDomain: "hba-quiz.firebaseapp.com",
-  databaseURL: "https://hba-quiz-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "hba-quiz",
-  storageBucket: "hba-quiz.firebasestorage.app",
-  messagingSenderId: "1092716286481",
-  appId: "1:1092716286481:web:50d2d37504871cc7de17b0"
-};
-
