@@ -357,10 +357,8 @@ function setupLobby() {
   const cfgEncoded = btoa(JSON.stringify(cfg));
   const baseUrl = window.location.href.replace('host.html','player.html');
   const joinUrl = baseUrl + '?room=' + roomCode + '&cfg=' + encodeURIComponent(cfgEncoded);
-  // Display clean URL (without cfg blob) — QR code carries the full URL
-  const displayUrl = baseUrl + '?room=' + roomCode;
-  document.getElementById('join-url-display').textContent = displayUrl;
-  document.getElementById('join-url-display').title = 'Full URL is in the QR code';
+  // Display URL includes cfg so it works for everyone, not just the host device
+  document.getElementById('join-url-display').textContent = joinUrl;
   document.getElementById('room-code-display').textContent = roomCode;
 
   // QR Code — white background + black modules for reliable scanning
@@ -494,39 +492,64 @@ function startTimer(seconds, qIndex) {
   }, 1000);
 }
 
-function listenForAnswers(index, q, revealed) {
+function listenForAnswers(index, q) {
   if (answersRef) answersRef.off();
   answersRef = db.ref('rooms/' + roomCode + '/answers/' + index);
-  const optionCounts = new Array(q.options.length).fill(0);
+  let isRevealed = false;
 
   answersRef.on('value', snap => {
     const answers = snap.val() || {};
     const total = Object.keys(answers).length;
     document.getElementById('response-count').textContent = total;
+
+    // Only show per-option breakdown after answer is revealed
     const counts = new Array(q.options.length).fill(0);
-    Object.values(answers).forEach(a => { if (a.answer !== undefined && counts[a.answer] !== undefined) counts[a.answer]++; });
+    Object.values(answers).forEach(a => {
+      if (a.answer !== undefined && counts[a.answer] !== undefined) counts[a.answer]++;
+    });
     const max = Math.max(...counts, 1);
     counts.forEach((cnt, i) => {
-      const el = document.getElementById('cnt-' + i);
+      const el  = document.getElementById('cnt-' + i);
       const bar = document.getElementById('bar-' + i);
-      if (el) el.textContent = cnt;
-      if (bar) bar.style.width = Math.round(cnt/max*100) + '%';
+      if (el)  el.textContent  = isRevealed ? cnt : '';
+      if (bar) bar.style.width = isRevealed ? Math.round(cnt/max*100) + '%' : '0%';
     });
   });
+
+  // Expose a method so revealAnswer() can switch to revealed mode
+  listenForAnswers.showCounts = () => {
+    isRevealed = true;
+    // Re-read current snapshot to render counts immediately
+    if (answersRef) answersRef.once('value', snap => {
+      const answers = snap.val() || {};
+      const counts = new Array(q.options.length).fill(0);
+      Object.values(answers).forEach(a => {
+        if (a.answer !== undefined && counts[a.answer] !== undefined) counts[a.answer]++;
+      });
+      const max = Math.max(...counts, 1);
+      counts.forEach((cnt, i) => {
+        const el  = document.getElementById('cnt-' + i);
+        const bar = document.getElementById('bar-' + i);
+        if (el)  el.textContent  = cnt;
+        if (bar) bar.style.width = Math.round(cnt/max*100) + '%';
+      });
+    });
+  };
 }
 
 function listenWordCloud(index) {
   if (answersRef) answersRef.off();
   answersRef = db.ref('rooms/' + roomCode + '/answers/' + index);
-  const wordMap = {};
 
   answersRef.on('value', snap => {
     const answers = snap.val() || {};
     const total = Object.keys(answers).length;
     document.getElementById('wc-response-count').textContent = total + ' response' + (total !== 1 ? 's' : '');
+
+    // Rebuild fresh each time — prevents double-counting on repeated Firebase events
+    const wordMap = {};
     Object.values(answers).forEach(a => {
       if (!a.text) return;
-      // Treat the full answer as a single phrase (supports multi-word answers like "Long-tailed Buzzard")
       const phrase = a.text.trim();
       if (phrase.length > 0) wordMap[phrase] = (wordMap[phrase] || 0) + 1;
     });
@@ -556,6 +579,10 @@ function revealAnswer() {
   clearInterval(timerInterval);
   const q = QUIZ_QUESTIONS[currentQIndex];
   if (q.type !== 'mcq') return;
+
+  // Show final per-option counts, then stop listening
+  if (typeof listenForAnswers.showCounts === 'function') listenForAnswers.showCounts();
+  setTimeout(() => { if (answersRef) { answersRef.off(); answersRef = null; } }, 600);
 
   // Single atomic update — player listener must not see revealed:true without correctAnswer
   db.ref('rooms/' + roomCode).update({
